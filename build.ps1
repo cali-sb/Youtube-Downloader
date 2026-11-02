@@ -16,6 +16,14 @@ $iscc = @(
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { throw "No encuentro ISCC.exe (Inno Setup 6)" }
 
+# Python y FFmpeg viajan dentro del instalador: no publicar con versiones sin parches.
+$pyVersion = [version](& .\venv\Scripts\python.exe -c "import platform; print(platform.python_version())")
+if ($pyVersion -lt [version]"3.13.17") { throw "Python $pyVersion sin parches: hace falta 3.13.17 o posterior." }
+$ffmpegLine = (& "C:\ffmpeg\bin\ffmpeg.exe" -hide_banner -version | Select-Object -First 1)
+if ($ffmpegLine -notmatch '^ffmpeg version n(\d+\.\d+(\.\d+)?)' -or [version]($Matches[1] + $(if ($Matches[2]) { '' } else { '.0' })) -lt [version]"8.1.2") {
+    throw "FFmpeg sin parches o de rama master ($ffmpegLine): hace falta n8.1.2 o posterior."
+}
+
 & .\venv\Scripts\python.exe -m PyInstaller --noconfirm --clean YouTubeDownloader.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller ha fallado" }
 

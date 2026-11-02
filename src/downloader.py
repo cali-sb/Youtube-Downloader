@@ -1,5 +1,7 @@
 import yt_dlp
+from yt_dlp.postprocessor import FFmpegVideoConvertorPP
 import os
+import re
 import time
 import sys
 
@@ -11,6 +13,42 @@ VIDEO_FORMATS = ["mp4", "mkv", "avi", "webm", "mov"]
 
 # Calidades de audio disponibles
 AUDIO_QUALITIES = ["320kbps", "192kbps", "128kbps"]
+
+
+class ConvertVideoPP(FFmpegVideoConvertorPP):
+    """Pasa a AVI o MOV el MKV descargado. YouTube sirve sobre todo AV1, VP9 y Opus, que
+    no caben en esos contenedores. MOV copia H.264 + AAC sin pérdida si los hay; lo demás
+    se recodifica. Sin estas opciones, FFmpeg usaría Xvid a 200 kbps en AVI."""
+    _copy_streams = False
+
+    def run(self, info):
+        self._copy_streams = (info.get('vcodec') or '').startswith(('avc1', 'h264')) \
+            and (info.get('acodec') or '').startswith(('mp4a', 'aac'))
+        return super().run(info)
+
+    def _options(self, target_ext):
+        if target_ext == 'mov' and self._copy_streams:
+            return self.stream_copy_opts()
+        if target_ext == 'avi':
+            codecs = ('-c:v', 'libxvid', '-q:v', '4', '-vtag', 'XVID', '-c:a', 'libmp3lame', '-q:a', '2')
+        else:
+            codecs = ('-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+                      '-c:a', 'aac', '-b:a', '192k')
+        return (*self.stream_copy_opts(False), *codecs)
+
+
+def remove_partial_files(folder, existing, filename):
+    # Solo borra lo creado por esta descarga: mismo título y no presente al empezar.
+    if not filename:
+        return
+    title = re.sub(r'(\.f[\w-]+)?\.\w+$', '', os.path.basename(filename))
+    for name in set(os.listdir(folder)) - existing:
+        if name.startswith(title + '.'):
+            try:
+                os.remove(os.path.join(folder, name))
+            except OSError:
+                pass
+
 
 def get_ffmpeg_path():
     if getattr(sys, 'frozen', False):
@@ -58,6 +96,8 @@ def download_video(url: str, quality: str, output_format: str, output_path: str,
                    progress_callback=None, cancel_check=None) -> dict:
     start_time = time.time()
     output_format = output_format.lower()
+    existing_files = set(os.listdir(output_path)) if os.path.isdir(output_path) else set()
+    current_file = [None]
 
     ffmpeg_location = get_ffmpeg_path()
 
@@ -84,6 +124,9 @@ def download_video(url: str, quality: str, output_format: str, output_path: str,
             'no_warnings': True,
             'js_runtimes': {'node': {}, 'deno': {}},
         }
+        if output_format == 'aac':
+            # yt-dlp guarda el AAC como .m4a; se pasa a .aac sin recodificar.
+            ydl_opts['postprocessors'].append({'key': 'FFmpegVideoRemuxer', 'preferedformat': 'aac'})
         if ffmpeg_location:
             ydl_opts['ffmpeg_location'] = ffmpeg_location
     else:
@@ -91,9 +134,9 @@ def download_video(url: str, quality: str, output_format: str, output_path: str,
         format_map = {
             'mp4':  (f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={height}]+bestaudio/best', 'mp4'),
             'mkv':  (f'bestvideo[height<={height}]+bestaudio/best', 'mkv'),
-            'avi':  (f'bestvideo[height<={height}]+bestaudio/best', 'avi'),
+            'avi':  (f'bestvideo[height<={height}]+bestaudio/best', 'mkv'),
             'webm': (f'bestvideo[height<={height}][ext=webm]+bestaudio[ext=webm]/bestvideo[height<={height}]+bestaudio/best', 'webm'),
-            'mov':  (f'bestvideo[height<={height}]+bestaudio/best', 'mov'),
+            'mov':  (f'bestvideo[height<={height}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<={height}]+bestaudio/best', 'mkv'),
         }
         fmt_selector, merge_fmt = format_map.get(output_format, (f'bestvideo[height<={height}]+bestaudio/best', output_format))
         ydl_opts = {
@@ -112,6 +155,7 @@ def download_video(url: str, quality: str, output_format: str, output_path: str,
     thumbnail_url = [None]
 
     def progress_hook(d):
+        current_file[0] = d.get('filename') or current_file[0]
         if cancel_check and cancel_check():
             raise Exception("Descarga cancelada por el usuario")
         if d['status'] == 'downloading' and progress_callback:
@@ -130,6 +174,8 @@ def download_video(url: str, quality: str, output_format: str, output_path: str,
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            if output_format in ('avi', 'mov'):
+                ydl.add_post_processor(ConvertVideoPP(ydl, output_format), when='post_process')
             info = ydl.extract_info(url, download=True)
             title = info.get('title', 'Sin título')
             thumbnail_url[0] = info.get('thumbnail', '')
@@ -170,11 +216,8 @@ def download_video(url: str, quality: str, output_format: str, output_path: str,
         }
 
     except Exception as e:
+        remove_partial_files(output_path, existing_files, current_file[0])
         error_msg = str(e)
-        if "Sign in" in error_msg or "bot" in error_msg:
-            print("Error: Este vídeo requiere estar logueado en YouTube.")
-        elif "cancelada" in error_msg:
-            raise
-        else:
-            print(f"Error al descargar: {e}")
-        return None
+        if "cancelada" not in error_msg and ("Sign in" in error_msg or "bot" in error_msg):
+            raise Exception("Este vídeo requiere estar logueado en YouTube.") from e
+        raise

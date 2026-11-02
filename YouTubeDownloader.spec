@@ -44,7 +44,6 @@ a = Analysis(
         'yt_dlp.extractor',
         'yt_dlp.postprocessor',
         'packaging',
-        'mutagen',
         'brotli',
         'Cryptodome',
         'websockets',
@@ -55,7 +54,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'customtkinter', 'PIL', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineQuick'],
+    # mutagen (GPL): yt-dlp's hook requests it, but it is only for EmbedThumbnail, which we don't use.
+    excludes=['tkinter', 'customtkinter', 'PIL', 'mutagen', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineQuick'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

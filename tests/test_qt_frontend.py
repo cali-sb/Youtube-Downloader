@@ -13,8 +13,9 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
+import downloader
 import qt_gui
-APP = QApplication.instance() or QApplication([])
+APP =QApplication.instance() or QApplication([])
 QQuickStyle.setStyle('Basic')
 
 
@@ -94,6 +95,29 @@ class FrontendTests(unittest.TestCase):
         self.bridge._receive('downloadError', 'cancelada')
         self.assertFalse(self.bridge.state['downloading'])
         self.assertFalse(self.bridge.state['error'])
+
+    def test_convert_copies_only_compatible_mov(self):
+        pp = downloader.ConvertVideoPP(None, 'mov')
+        pp._copy_streams = True
+        self.assertEqual(tuple(pp._options('mov'))[-2:], ('-c', 'copy'))
+        pp._copy_streams = False
+        self.assertIn('libx264', pp._options('mov'))
+        self.assertIn('libxvid', pp._options('avi'))
+
+    def test_failed_download_reports_reason_and_cleans_up(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, 'Otro.mp4').touch()
+            with patch.object(downloader.yt_dlp, 'YoutubeDL') as ydl:
+                def fail(url, download):
+                    hook = ydl.call_args.args[0]['progress_hooks'][0]
+                    hook({'status': 'downloading', 'filename': os.path.join(folder, 'A. B.f395.mp4')})
+                    Path(folder, 'A. B.f395.mp4.part').touch()
+                    Path(folder, 'A. B.temp.mov').touch()
+                    raise ValueError('Conversion failed!')
+                ydl.return_value.__enter__.return_value.extract_info.side_effect = fail
+                with self.assertRaisesRegex(ValueError, 'Conversion failed'):
+                    downloader.download_video('u', '360p', 'mov', folder)
+            self.assertEqual(os.listdir(folder), ['Otro.mp4'])
 
     def test_qml_pages_and_themes(self):
         engine = QQmlApplicationEngine()

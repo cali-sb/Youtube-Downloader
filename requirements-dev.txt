@@ -1,0 +1,4 @@
+# Solo para compilar y regenerar el icono; nada de esto se distribuye con la app.
+-r requirements.txt
+pyinstaller==6.22.3
+pillow==13.0.0

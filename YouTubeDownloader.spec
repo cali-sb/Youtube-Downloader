@@ -51,15 +51,11 @@ a = Analysis(
         'certifi',
         'requests',
         'urllib3',
-        'PIL',
-        'PIL.Image',
-        'PIL.ImageFilter',
-        'PIL.ImageOps',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'customtkinter', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineQuick'],
+    excludes=['tkinter', 'customtkinter', 'PIL', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineQuick'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -71,6 +67,14 @@ a = Analysis(
 # Leave Windows to supply ICU; FFmpeg's own DLLs remain isolated below.
 a.binaries = [entry for entry in a.binaries
               if Path(entry[0]).name.lower() not in ('icuuc.dll', 'icudt78.dll')]
+
+# `excludes` only covers Python modules: PySide6's QML plugins still pull in the
+# Chromium that WebEngine embeds. The app never loads it, so don't ship it.
+def _is_webengine(entry):
+    return re.search(r'webengine|webview', entry[0], re.IGNORECASE) is not None
+
+a.binaries = [entry for entry in a.binaries if not _is_webengine(entry)]
+a.datas = [entry for entry in a.datas if not _is_webengine(entry)]
 
 # FFmpeg is a separate process: keep its DLLs away from Qt's DLL search path.
 # Append after Analysis so its ICU DLL is not collected into the application root.

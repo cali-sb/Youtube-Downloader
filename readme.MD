@@ -69,7 +69,7 @@ FFmpeg tiene que estar en el `PATH` o en la raíz del proyecto.
 
 - Windows 10 u 11 de 64 bits
 - Conexión a Internet
-- Desde el código: desarrollada y probada con Python 3.13, PySide6 6.12 y PyInstaller 6.19
+- Desde el código: desarrollada y probada con Python 3.15, PySide6 6.12 y PyInstaller 6.22
 
 ## Dependencias principales
 
@@ -80,7 +80,8 @@ FFmpeg tiene que estar en el `PATH` o en la raíz del proyecto.
 | FFmpeg | Conversión y mezcla de formatos |
 | requests | Descarga de actualizaciones |
 | packaging | Comparación de versiones |
-| Pillow | Regenerar el icono (`create_icon.py`) |
+
+Para compilar o regenerar el icono (`create_icon.py`), instala también `requirements-dev.txt`, que añade PyInstaller y Pillow.
 
 ## Compilar y publicar una versión 📦
 
@@ -92,7 +93,7 @@ La versión está solo en `src/version.py`; el `.spec` de PyInstaller y el insta
    .\venv\Scripts\python.exe -m unittest discover -s tests -v
    .\build.ps1
    ```
-   `build.ps1` necesita PyInstaller en el `venv`, [Inno Setup 6](https://jrsoftware.org/isinfo.php) y FFmpeg con sus DLL en `C:\ffmpeg\bin`. Compila la app en una carpeta (`dist\YouTubeDownloader\`, el `.exe` no funciona suelto), comprueba que arranca y deja el instalador en `installer_output\` junto con su SHA-256.
+   `build.ps1` necesita `requirements-dev.txt` instalado en el `venv`, [Inno Setup 6](https://jrsoftware.org/isinfo.php) y FFmpeg con sus DLL en `C:\ffmpeg\bin`. Se niega a compilar con Python anterior a 3.13.17 o con FFmpeg anterior a n8.1.2, porque ambos viajan dentro del instalador. Compila la app en una carpeta (`dist\YouTubeDownloader\`, el `.exe` no funciona suelto), comprueba que arranca y deja el instalador en `installer_output\` junto con su SHA-256.
 3. Crea una release en GitHub con la versión como etiqueta (p. ej. `1.0.0`) y adjunta `YouTubeDownloader-Setup-vX.Y.Z.exe`. El nombre del fichero tiene que contener `Setup` y acabar en `.exe` para que la app lo encuentre.
 
 ## Estructura del proyecto
